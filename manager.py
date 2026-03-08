@@ -101,6 +101,24 @@ class Manager(ControlSurface):
                 abletonosc.SceneHandler(self),
                 abletonosc.MidiMapHandler(self),
             ]
+            try:
+                self.handlers.append(abletonosc.BrowserHandler(self))
+                logger.info("BrowserHandler loaded successfully")
+            except Exception as e:
+                logger.error("Failed to load BrowserHandler: %s" % str(e))
+                logger.error(traceback.format_exc())
+            try:
+                self.handlers.append(abletonosc.AutomationHandler(self))
+                logger.info("AutomationHandler loaded successfully")
+            except Exception as e:
+                logger.error("Failed to load AutomationHandler: %s" % str(e))
+                logger.error(traceback.format_exc())
+            try:
+                self.handlers.append(abletonosc.ReturnTrackHandler(self))
+                logger.info("ReturnTrackHandler loaded successfully")
+            except Exception as e:
+                logger.error("Failed to load ReturnTrackHandler: %s" % str(e))
+                logger.error(traceback.format_exc())
 
     def clear_api(self):
         self.osc_server.clear_handlers()
@@ -130,6 +148,9 @@ class Manager(ControlSurface):
             importlib.reload(abletonosc.song)
             importlib.reload(abletonosc.track)
             importlib.reload(abletonosc.view)
+            importlib.reload(abletonosc.browser)
+            importlib.reload(abletonosc.automation)
+            importlib.reload(abletonosc.return_track)
             importlib.reload(abletonosc)
         except Exception as e:
             exc = traceback.format_exc()
