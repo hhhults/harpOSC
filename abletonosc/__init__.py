@@ -13,4 +13,7 @@ from .device import DeviceHandler
 from .scene import SceneHandler
 from .view import ViewHandler
 from .midimap import MidiMapHandler
+from .browser import BrowserHandler
+from .automation import AutomationHandler
+from .return_track import ReturnTrackHandler
 from .constants import OSC_LISTEN_PORT, OSC_RESPONSE_PORT
