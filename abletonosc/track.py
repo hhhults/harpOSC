@@ -108,6 +108,15 @@ class TrackHandler(AbletonOSCHandler):
 
         self.osc_server.add_handler("/live/track/delete_clip", create_track_callback(track_delete_clip))
 
+        def track_duplicate_clip_to_arrangement(track, params: Tuple[Any]):
+            clip_index = int(params[0])
+            time = float(params[1])
+            clip = track.clip_slots[clip_index].clip
+            if clip:
+                track.duplicate_clip_to_arrangement(clip, time)
+
+        self.osc_server.add_handler("/live/track/duplicate_clip_to_arrangement", create_track_callback(track_duplicate_clip_to_arrangement))
+
         def track_get_clip_names(track, _):
             return tuple(clip_slot.clip.name if clip_slot.clip else None for clip_slot in track.clip_slots)
 

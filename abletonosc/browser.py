@@ -24,6 +24,22 @@ class BrowserHandler(AbletonOSCHandler):
         self.osc_server.add_handler("/live/browser/list_children", self._list_children)
         self.osc_server.add_handler("/live/track/insert_device", self._insert_device)
 
+    def _has_children(self, item):
+        """Check if a browser item can be recursed into.
+
+        In Live 11, category items (e.g. 'Reverb & Resonance') report
+        is_folder=False even though they have children. We treat any
+        non-loadable item as potentially having children.
+        """
+        if item.is_folder:
+            return True
+        if not item.is_loadable:
+            try:
+                return len(list(item.children)) > 0
+            except Exception:
+                return False
+        return False
+
     def _find_item_recursive(self, parent, name, max_depth=6):
         """Recursively search browser tree for an item by name (case-insensitive)."""
         name_lower = name.lower()
@@ -31,7 +47,7 @@ class BrowserHandler(AbletonOSCHandler):
             for item in parent.children:
                 if item.name.lower() == name_lower:
                     return item
-                if item.is_folder and max_depth > 0:
+                if self._has_children(item) and max_depth > 0:
                     result = self._find_item_recursive(item, name, max_depth - 1)
                     if result:
                         return result
@@ -50,7 +66,7 @@ class BrowserHandler(AbletonOSCHandler):
                     results.append(item)
                     if len(results) >= 20:
                         return results
-                if item.is_folder and max_depth > 0:
+                if self._has_children(item) and max_depth > 0:
                     self._find_item_partial(item, search_term, max_depth - 1, results)
                     if len(results) >= 20:
                         return results
@@ -128,36 +144,62 @@ class BrowserHandler(AbletonOSCHandler):
         """Load an instrument by name onto a track.
 
         Params: [track_index, instrument_name]
+
+        Searches instruments and sounds categories with exact-match priority.
         """
         track_index = int(params[0])
         instrument_name = str(params[1])
 
-        browser = self.browser
         song = self.song
-
         track = song.tracks[track_index]
         song.view.selected_track = track
 
-        categories = [browser.instruments, browser.sounds]
+        browser = self.browser
+        categories = [browser.drums, browser.instruments, browser.sounds]
         try:
             categories.append(browser.plugins)
         except Exception:
             pass
 
+        # First pass: exact name match deep in the tree
         item = None
         for category in categories:
             item = self._find_item_recursive(category, instrument_name)
             if item:
                 break
-            results = self._find_item_partial(category, instrument_name, max_depth=6)
-            if results:
-                item = results[0]
-                break
 
-        if not item:
+        if item:
+            loadable = self._get_loadable(item)
+            if loadable:
+                logger.info("Loading instrument: %s onto track %d" % (loadable.name, track_index))
+                browser.load_item(loadable)
+                return (track_index, loadable.name)
+
+        # Second pass: partial match with sorting
+        all_matches = []
+        for category in categories:
+            results = self._find_item_partial(category, instrument_name, max_depth=6)
+            all_matches.extend(results)
+
+        if not all_matches:
             return ("error", "Instrument not found: %s" % instrument_name)
 
-        loadable = self._get_loadable(item)
+        name_lower = instrument_name.lower()
+        all_matches.sort(key=lambda m: (
+            0 if m.name.lower() == name_lower else 1,
+            0 if m.is_loadable else 1,
+        ))
+
+        loadable = None
+        for match in all_matches:
+            if match.is_loadable:
+                loadable = match
+                break
+            child = self._get_loadable(match)
+            if child:
+                loadable = child
+                break
+
         if not loadable:
             return ("error", "Instrument not loadable: %s" % instrument_name)
 
@@ -169,70 +211,67 @@ class BrowserHandler(AbletonOSCHandler):
         """Load an audio effect by name onto a track.
 
         Params: [track_index, effect_name]
+
+        Only searches audio_effects and midi_effects categories to avoid
+        matching sample files from user_library/packs.
         """
         track_index = int(params[0])
         effect_name = str(params[1])
 
-        browser = self.browser
         song = self.song
-
         track = song.tracks[track_index]
         song.view.selected_track = track
 
-        # Search audio_effects, midi_effects, and all top-level categories
+        browser = self.browser
+        # Only search effect categories — not user_library, packs, etc.
         categories = [browser.audio_effects, browser.midi_effects]
-        try:
-            categories.append(browser.instruments)
-            categories.append(browser.sounds)
-            categories.append(browser.user_library)
-            categories.append(browser.packs)
-        except Exception:
-            pass
 
+        # First pass: exact name match deep in the tree
         item = None
         for category in categories:
             item = self._find_item_recursive(category, effect_name, max_depth=10)
             if item:
-                logger.info("Found '%s' in category, is_loadable=%s, is_folder=%s" %
+                logger.info("Exact match '%s': is_loadable=%s, is_folder=%s" %
                             (item.name, item.is_loadable, item.is_folder))
                 break
 
-        # Collect all matches, not just the first
+        if item:
+            loadable = self._get_loadable(item)
+            if loadable:
+                logger.info("Loading effect: %s onto track %d" % (loadable.name, track_index))
+                browser.load_item(loadable)
+                return (track_index, loadable.name)
+
+        # Second pass: partial match, sorted by relevance
         all_matches = []
-        if not item:
-            for category in categories:
-                results = self._find_item_partial(category, effect_name, max_depth=10)
-                all_matches.extend(results)
-        else:
-            all_matches.append(item)
-            # Also search for more matches in case this one isn't loadable
-            for category in categories:
-                results = self._find_item_partial(category, effect_name, max_depth=10)
-                for r in results:
-                    if r.name != item.name or r.is_loadable != item.is_loadable:
-                        all_matches.append(r)
+        for category in categories:
+            results = self._find_item_partial(category, effect_name, max_depth=10)
+            all_matches.extend(results)
 
         if not all_matches:
             return ("error", "Effect not found: %s" % effect_name)
 
-        # Find the first loadable item among all matches
+        name_lower = effect_name.lower()
+        all_matches.sort(key=lambda m: (
+            0 if m.name.lower() == name_lower else 1,
+            0 if m.is_loadable else 1,
+        ))
+
         loadable = None
         for match in all_matches:
-            logger.info("Checking match '%s': is_loadable=%s, is_folder=%s" %
-                         (match.name, match.is_loadable, match.is_folder))
+            logger.info("Partial match '%s': is_loadable=%s" % (match.name, match.is_loadable))
             if match.is_loadable:
                 loadable = match
                 break
             child = self._get_loadable(match)
             if child:
                 loadable = child
-                logger.info("Using loadable child: '%s'" % child.name)
                 break
 
         if not loadable:
             return ("error", "Effect not loadable: %s" % effect_name)
 
-        logger.info("Loading effect: %s onto track %d" % (loadable.name, track_index))
+        logger.info("v3 loading effect: %s onto track %d" % (loadable.name, track_index))
         browser.load_item(loadable)
         return (track_index, loadable.name)
 
