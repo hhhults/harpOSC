@@ -91,11 +91,9 @@ class OSCServer:
 
             if rv is not None:
                 assert isinstance(rv, tuple)
-                remote_hostname, _ = remote_addr
-                response_addr = (remote_hostname, self._response_port)
                 self.send(address=message.address,
                           params=rv,
-                          remote_addr=response_addr)
+                          remote_addr=remote_addr)
         elif "*" in message.address:
             regex = message.address.replace("*", "[^/]+")
             for callback_address, callback in self._callbacks.items():
@@ -116,11 +114,9 @@ class OSCServer:
                         continue
                     if rv is not None:
                         assert isinstance(rv, tuple)
-                        remote_hostname, _ = remote_addr
-                        response_addr = (remote_hostname, self._response_port)
                         self.send(address=callback_address,
                                   params=rv,
-                                  remote_addr=response_addr)
+                                  remote_addr=remote_addr)
         else:
             self.logger.error("AbletonOSC: Unknown OSC address: %s" % message.address)
 
@@ -159,11 +155,13 @@ class OSCServer:
                 #--------------------------------------------------------------------------------
                 # Update the default reply address to the most recent client. Used when
                 # sending (e.g) /live/song/beat messages and listen updates.
-                #
-                # This is slightly ugly and prevents registering listeners from different IPs.
                 #--------------------------------------------------------------------------------
-                self._remote_addr = (remote_addr[0], OSC_RESPONSE_PORT)
-                self.parse_bundle(data, remote_addr)
+                self._remote_addr = remote_addr
+                try:
+                    self.parse_bundle(data, remote_addr)
+                except Exception as e:
+                    self.logger.error("AbletonOSC: Error handling OSC message: %s" % e)
+                    self.logger.warning("AbletonOSC: %s" % traceback.format_exc())
 
         except socket.error as e:
             if e.errno == errno.ECONNRESET:
