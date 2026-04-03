@@ -119,6 +119,18 @@ class Manager(ControlSurface):
             except Exception as e:
                 logger.error("Failed to load ReturnTrackHandler: %s" % str(e))
                 logger.error(traceback.format_exc())
+            try:
+                self.handlers.append(abletonosc.ChainHandler(self))
+                logger.info("ChainHandler loaded successfully")
+            except Exception as e:
+                logger.error("Failed to load ChainHandler: %s" % str(e))
+                logger.error(traceback.format_exc())
+            try:
+                self.handlers.append(abletonosc.DrumPadHandler(self))
+                logger.info("DrumPadHandler loaded successfully")
+            except Exception as e:
+                logger.error("Failed to load DrumPadHandler: %s" % str(e))
+                logger.error(traceback.format_exc())
 
     def clear_api(self):
         self.osc_server.clear_handlers()
@@ -127,12 +139,11 @@ class Manager(ControlSurface):
 
     def tick(self):
         """
-        Called once per 100ms "tick".
+        Called once per scheduler tick.
         Live's embedded Python implementation does not appear to support threading,
         and beachballs when a thread is started. Instead, this approach allows long-running
         processes such as the OSC server to perform operations.
         """
-        logger.debug("Tick...")
         self.osc_server.process()
         self.schedule_message(1, self.tick)
 
@@ -151,6 +162,8 @@ class Manager(ControlSurface):
             importlib.reload(abletonosc.browser)
             importlib.reload(abletonosc.automation)
             importlib.reload(abletonosc.return_track)
+            importlib.reload(abletonosc.chain)
+            importlib.reload(abletonosc.drum_pad)
             importlib.reload(abletonosc)
         except Exception as e:
             exc = traceback.format_exc()

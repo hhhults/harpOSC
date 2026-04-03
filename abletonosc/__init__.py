@@ -16,4 +16,6 @@ from .midimap import MidiMapHandler
 from .browser import BrowserHandler
 from .automation import AutomationHandler
 from .return_track import ReturnTrackHandler
+from .chain import ChainHandler
+from .drum_pad import DrumPadHandler
 from .constants import OSC_LISTEN_PORT, OSC_RESPONSE_PORT
