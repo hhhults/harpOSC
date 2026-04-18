@@ -18,4 +18,5 @@ from .automation import AutomationHandler
 from .return_track import ReturnTrackHandler
 from .chain import ChainHandler
 from .drum_pad import DrumPadHandler
+from .simpler import SimplerHandler
 from .constants import OSC_LISTEN_PORT, OSC_RESPONSE_PORT

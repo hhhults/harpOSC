@@ -131,6 +131,12 @@ class Manager(ControlSurface):
             except Exception as e:
                 logger.error("Failed to load DrumPadHandler: %s" % str(e))
                 logger.error(traceback.format_exc())
+            try:
+                self.handlers.append(abletonosc.SimplerHandler(self))
+                logger.info("SimplerHandler loaded successfully")
+            except Exception as e:
+                logger.error("Failed to load SimplerHandler: %s" % str(e))
+                logger.error(traceback.format_exc())
 
     def clear_api(self):
         self.osc_server.clear_handlers()
@@ -148,6 +154,13 @@ class Manager(ControlSurface):
         self.schedule_message(1, self.tick)
 
     def reload_imports(self):
+        """Hot-reload all abletonosc submodules and re-register handlers.
+
+        Dynamic: iterates the abletonosc package's modules/classes so
+        NEW handler files (dropped in and re-imported via the package)
+        are picked up on subsequent `/live/api/reload` calls without
+        requiring a Control Surface toggle.
+        """
         try:
             importlib.reload(abletonosc.application)
             importlib.reload(abletonosc.clip)
@@ -164,13 +177,39 @@ class Manager(ControlSurface):
             importlib.reload(abletonosc.return_track)
             importlib.reload(abletonosc.chain)
             importlib.reload(abletonosc.drum_pad)
+            importlib.reload(abletonosc.simpler)
             importlib.reload(abletonosc)
-        except Exception as e:
-            exc = traceback.format_exc()
-            logging.warning(exc)
+        except Exception:
+            logger.warning(traceback.format_exc())
 
         self.clear_api()
+
+        # 3. Drop handlers whose class module was just reloaded (stale class refs)
+        self.handlers = []
+
         self.init_api()
+
+        # 4. Discover any *Handler class exposed by the package but not wired
+        #    into init_api and attach it automatically.
+        try:
+            existing_types = {type(h) for h in self.handlers}
+            for attr_name in dir(abletonosc):
+                if not attr_name.endswith("Handler"):
+                    continue
+                cls = getattr(abletonosc, attr_name)
+                if not isinstance(cls, type):
+                    continue
+                if cls in existing_types:
+                    continue
+                try:
+                    with self.component_guard():
+                        self.handlers.append(cls(self))
+                    logger.info("Auto-discovered handler: %s" % attr_name)
+                except Exception as e:
+                    logger.error("Auto-load %s failed: %s" % (attr_name, e))
+        except Exception:
+            logger.warning(traceback.format_exc())
+
         logger.info("Reloaded code")
 
     def disconnect(self):

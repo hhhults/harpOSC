@@ -47,6 +47,29 @@ class ClipSlotHandler(AbletonOSCHandler):
             self.osc_server.add_handler("/live/clip_slot/%s" % method,
                                         create_clip_slot_callback(self._call_method, method))
 
+        def clip_slot_fire_ext(params):
+            """Fire a clip slot with optional legato + custom launch quantization.
+
+            Params: [track_idx, slot_idx, force_legato (0/1), launch_quant (int)]
+            Quantization values follow Live.Song.Quantization enum;
+            0 = q_no_q, 4 = q_bar, 7 = q_quarter, 11 = q_sixteenth, etc.
+            Pass -1 for launch_quant to use the song's default.
+            """
+            import Live
+            track_idx = int(params[0])
+            slot_idx = int(params[1])
+            force_legato = bool(int(params[2]))
+            q_val = int(params[3])
+
+            slot = self.song.tracks[track_idx].clip_slots[slot_idx]
+            kwargs = {"force_legato": force_legato}
+            if q_val >= 0:
+                kwargs["launch_quantization"] = q_val
+            slot.fire(**kwargs)
+            return (track_idx, slot_idx, int(force_legato), q_val)
+
+        self.osc_server.add_handler("/live/clip_slot/fire_ext", clip_slot_fire_ext)
+
         for prop in properties_r + properties_rw:
             self.osc_server.add_handler("/live/clip_slot/get/%s" % prop,
                                         create_clip_slot_callback(self._get_property, prop))

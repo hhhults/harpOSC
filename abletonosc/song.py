@@ -13,7 +13,30 @@ class SongHandler(AbletonOSCHandler):
         super().__init__(manager)
         self.class_identifier = "song"
 
+    def _move_device(self, params):
+        """Move a device from one track to another.
+
+        Params: [src_track_idx, src_device_idx, dest_track_idx, dest_insertion_idx]
+        If dest_insertion_idx is negative, appends to end of destination chain.
+        """
+        src_track_idx = int(params[0])
+        src_device_idx = int(params[1])
+        dest_track_idx = int(params[2])
+        dest_insertion_idx = int(params[3])
+
+        src_track = self.song.tracks[src_track_idx]
+        device = src_track.devices[src_device_idx]
+        dest_track = self.song.tracks[dest_track_idx]
+
+        if dest_insertion_idx < 0:
+            dest_insertion_idx = len(dest_track.devices)
+
+        self.song.move_device(device, dest_track, dest_insertion_idx)
+        return (src_track_idx, src_device_idx, dest_track_idx, dest_insertion_idx)
+
     def init_api(self):
+        self.osc_server.add_handler("/live/song/move_device", self._move_device)
+
         #--------------------------------------------------------------------------------
         # Callbacks for Song: methods
         #--------------------------------------------------------------------------------
